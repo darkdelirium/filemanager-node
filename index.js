@@ -1,27 +1,34 @@
+const dotenv = require('dotenv')
+dotenv.config()
 // init Web File System
-const wfs = require("wfs-local");
-const root = process.argv[3];
-const drive = new wfs.LocalFiles(root, null, {
- 	verbose: true
-});
+const wfs = require("wfs-local")
 
+// get config from .env
+const root = process.env.ROOTDIR
+const port = process.env.PORT || "8002"
+const host = process.env.HOST || "localhost"
+const corsOptions = { origin: JSON.parse(process.env.CORS) }
+
+const drive = new wfs.LocalFiles(root, null, {
+	verbose: true
+});
 
 // init REST API
 const fs = require("fs")
-const cors = require("cors");
-const path = require("path");
-const Busboy = require("busboy");
-const express = require("express");
-const bodyParser = require("body-parser");
+const cors = require("cors")
+const path = require("path")
+const Busboy = require("busboy")
+const express = require("express")
+const bodyParser = require("body-parser")
 const { Readable } = require('stream')
 
-const app = express();
-app.use(cors());
-app.use(bodyParser.urlencoded({ extended: true })); 
+const app = express()
+app.use(cors(corsOptions))
+app.use(bodyParser.urlencoded({ extended: true }))
 
 app.get("/info", async (req, res, next)=>{
 	const id = req.query.id;
-	const { free, used } = await drive.stats(id);
+	const { free, used } = await drive.stats(id)
 	res.send({
 		stats:{ free, used, total: free+used },
 		features:{ preview:{}, meta:{} }
@@ -36,12 +43,12 @@ app.get("/files", async (req, res, next)=>{
 		exclude: a => a.indexOf(".") === 0
 	};
 	if (search){
-		config.subFolders = true;
-		config.include = a => a.indexOf(search) !== -1;
+		config.subFolders = true
+		config.include = a => a.indexOf(search) !== -1
 	}
 
-	res.send( await drive.list(id, config));
-});
+	res.send( await drive.list(id, config))
+})
 
 app.get("/folders", async (req, res, next)=>{
 	res.send( await drive.list("/", {
@@ -49,8 +56,8 @@ app.get("/folders", async (req, res, next)=>{
 		subFolders: true,
 		nested: true,
 		exclude: a => a.indexOf(".") === 0
-	}));
-});
+	}))
+})
 
 app.get("/icons/:size/:type/:name", async (req, res, next)=>{
 	url = await getIconURL(req.params.size, req.params.type, req.params.name);
@@ -59,66 +66,66 @@ app.get("/icons/:size/:type/:name", async (req, res, next)=>{
 
 
 app.post("/copy", async (req, res, next)=>{
-	const source = req.body.id;
-	const target = req.body.to;
+	const source = req.body.id
+	const target = req.body.to
 
-	res.send(await drive.info(await drive.copy(source, target, "", { preventNameCollision: true })));
+	res.send(await drive.info(await drive.copy(source, target, "", { preventNameCollision: true })))
 });
 
 app.post("/move", async (req, res, next)=>{
-	const source = req.body.id;
-	const target = req.body.to;
+	const source = req.body.id
+	const target = req.body.to
 
-	res.send(await drive.info(await drive.move(source, target, "", { preventNameCollision: true })));
+	res.send(await drive.info(await drive.move(source, target, "", { preventNameCollision: true })))
 });
 
 app.post("/rename", async (req, res, next)=>{
-	const source = req.body.id;
-	const target = path.dirname(source);
-	const name = req.body.name;
+	const source = req.body.id
+	const target = path.dirname(source)
+	const name = req.body.name
 
-	res.send(await drive.info(await drive.move(source, target, name, { preventNameCollision: true })));
+	res.send(await drive.info(await drive.move(source, target, name, { preventNameCollision: true })))
 });
 
 app.post("/upload", async (req, res, next)=>{
-	const busboy = new Busboy({ headers: req.headers });
+	const busboy = new Busboy({ headers: req.headers })
 						
 	busboy.on("file", async (field, file, name) => {
 		console.log(req.body, name)
-		const target = await drive.make(req.query.id,  name, false, { preventNameCollision: true });
-		res.send(await drive.info(await drive.write(target, file)));
-	});
+		const target = await drive.make(req.query.id,  name, false, { preventNameCollision: true })
+		res.send(await drive.info(await drive.write(target, file)))
+	})
 
-	req.pipe(busboy);
+	req.pipe(busboy)
 })
 
 
 app.post("/makedir", async (req, res, next)=>{
 	const id = await drive.make(req.body.id, req.body.name, true, { preventNameCollision: true })
-	res.send(await drive.info(id));
-});
+	res.send(await drive.info(id))
+})
 
 app.post("/makefile", async (req, res, next)=>{
 	const id = await drive.make(req.body.id, req.body.name, false, { preventNameCollision: true })
 	res.send(await drive.info(id));
-});
+})
 
 app.post("/delete", async (req, res, next)=>{
 	drive.remove(req.body.id)
 	res.send({})
-});	
+})
 
 app.post("/text", async (req, res, next)=>{
 	const name = req.body.id;
 	const content = req.body.content;
 	const id = await drive.write(name, Readable.from([content]));
 	res.send(await drive.info(id));
-});
+})
 
 app.get("/text", async (req, res, next)=>{
 	const data = await drive.read(req.query.id);
 	data.pipe(res);
-});
+})
 
 app.get("/direct", async (req, res, next) => {
 	const id = req.query.id;
@@ -133,21 +140,21 @@ app.get("/direct", async (req, res, next) => {
 
 	res.writeHead(200, {
 		"Content-Disposition": `${disposition}; filename=${name}`
-	});
-	data.pipe(res);
-});
+	})
+	data.pipe(res)
+})
 
 async function getIconURL(size, type, name){
-	size = size.replace(/[^A-Za-z0-9.]/g, "");
-	name = name.replace(/[^A-Za-z0-9.]/g, "");
-	type - type.replace(/[^A-Za-z0-9.]/g, "");
+	size = size.replace(/[^A-Za-z0-9.]/g, "")
+	name = name.replace(/[^A-Za-z0-9.]/g, "")
+	type - type.replace(/[^A-Za-z0-9.]/g, "")
 
 	name = "icons/" + size + "/" + name;
 
 	try {
-		stat = await fs.promises.stat(name);
+		stat = await fs.promises.stat(name)
 	} catch(e){
-		name = "icons/" + size + "/types/" + type + ".svg";
+		name = "icons/" + size + "/types/" + type + ".svg"
 	}
 
 	return name
@@ -156,10 +163,8 @@ async function getIconURL(size, type, name){
 
 
 // load other assets
-app.use(express.static("./"));
+app.use(express.static("./"))
 
-const port = "3200";
-const host = "localhost";
 var server = app.listen(port, host, function () {
-	console.log("Server is running on port " + port + "...");
-});
+	console.log("Server is running on port " + port + "...")
+})
